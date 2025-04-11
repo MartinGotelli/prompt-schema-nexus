@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Plus } from 'lucide-react';
 import FilterBar from "@/components/ui/FilterBar";
-import { FilterOptions, Schema } from "@/types";
+import { FilterOptions, Schema, Status } from "@/types";
 import { mockSchemas, getUniqueValues } from "@/lib/data";
 import { statusOptions } from '@/lib/utils';
 import { DialogTrigger } from "@/components/ui/dialog";

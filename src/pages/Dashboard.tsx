@@ -1,3 +1,4 @@
+
 import React from "react";
 import StatsCard from "@/components/ui/StatsCard";
 import { Activity, Palette, Zap } from "lucide-react";
@@ -15,19 +16,19 @@ const Dashboard = () => {
           title="Total Prompts"
           value="32"
           description="Across 5 AI agents"
-          icon={<Palette className="h-4 w-4 text-primary" />}
+          icon={Palette}
         />
         <StatsCard 
           title="Total Schemas"
           value="14"
           description="For data validation"
-          icon={<Activity className="h-4 w-4 text-primary" />}
+          icon={Activity}
         />
         <StatsCard 
           title="API Calls"
           value="1,204"
           description="Last 30 days"
-          icon={<Zap className="h-4 w-4 text-primary" />}
+          icon={Zap}
         />
       </div>
       
