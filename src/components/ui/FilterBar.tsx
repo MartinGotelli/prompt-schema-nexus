@@ -17,6 +17,7 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
+import { Checkbox } from "@/components/ui/checkbox";
 import StatusBadge from "./StatusBadge";
 
 interface FilterBarProps {
@@ -25,6 +26,7 @@ interface FilterBarProps {
   memberOptions: string[];
   agentOptions?: string[];
   typeOptions?: string[];
+  showLatestOption?: boolean;
 }
 
 const FilterBar: React.FC<FilterBarProps> = ({
@@ -33,6 +35,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
   memberOptions,
   agentOptions = [],
   typeOptions = [],
+  showLatestOption = false,
 }) => {
   const [filters, setFilters] = useState<FilterOptions>({
     search: "",
@@ -40,6 +43,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
     member: [],
     agent: [],
     type: [],
+    latestOnly: false,
   });
 
   useEffect(() => {
@@ -98,6 +102,10 @@ const FilterBar: React.FC<FilterBarProps> = ({
     });
   };
 
+  const handleLatestOnlyChange = (checked: boolean) => {
+    setFilters((prev) => ({ ...prev, latestOnly: checked }));
+  };
+
   const resetFilters = () => {
     setFilters({
       search: "",
@@ -105,6 +113,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
       member: [],
       agent: [],
       type: [],
+      latestOnly: false,
     });
   };
 
@@ -175,7 +184,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
                 size="sm"
                 className={filters.member && filters.member.length > 0 ? "bg-accent" : ""}
               >
-                Member
+                AI Member
                 {filters.member && filters.member.length > 0 && (
                   <span className="ml-2 rounded-full bg-primary text-xs text-primary-foreground w-5 h-5 flex items-center justify-center">
                     {filters.member.length}
@@ -185,7 +194,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
             </PopoverTrigger>
             <PopoverContent className="w-56 p-0" align="start">
               <Command>
-                <CommandInput placeholder="Filter members..." />
+                <CommandInput placeholder="Filter AI members..." />
                 <CommandList>
                   <CommandEmpty>No members found.</CommandEmpty>
                   <CommandGroup>
@@ -309,12 +318,30 @@ const FilterBar: React.FC<FilterBarProps> = ({
             </Popover>
           )}
 
+          {/* Latest Version Only Filter */}
+          {showLatestOption && (
+            <div className="flex items-center space-x-2">
+              <Checkbox 
+                id="latest-only"
+                checked={filters.latestOnly}
+                onCheckedChange={handleLatestOnlyChange}
+              />
+              <label
+                htmlFor="latest-only"
+                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+              >
+                Latest versions only
+              </label>
+            </div>
+          )}
+
           {/* Reset Filters */}
           {(filters.search || 
             (filters.status && filters.status.length > 0) || 
             (filters.member && filters.member.length > 0) || 
             (filters.agent && filters.agent.length > 0) || 
-            (filters.type && filters.type.length > 0)) && (
+            (filters.type && filters.type.length > 0) ||
+            filters.latestOnly) && (
             <Button variant="ghost" size="sm" onClick={resetFilters} className="h-9">
               <XIcon className="mr-2 h-4 w-4" />
               Reset

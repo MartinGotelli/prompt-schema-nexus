@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { Plus, ChevronDown } from 'lucide-react';
+import { Plus, ChevronDown, ArrowUpDown } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -42,16 +42,27 @@ const Schemas = () => {
     search: "",
     status: [],
     member: [],
+    latestOnly: false
   });
   
   const [selectedSchema, setSelectedSchema] = useState<Schema | null>(null);
   const [isViewOpen, setIsViewOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [sortConfig, setSortConfig] = useState<{key: string, direction: 'asc' | 'desc'} | null>(null);
+  
+  // Create state for new schema form
+  const [newSchemaData, setNewSchemaData] = useState({
+    name: "",
+    version: "1.0.0",
+    definition: "{}",
+    isNewName: false,
+    owner: ""
+  });
 
   // Filter data based on current filters
   const filteredSchemas = useMemo(() => {
-    return mockSchemas.filter(schema => {
+    let filtered = mockSchemas.filter(schema => {
       const matchesSearch = filters.search ? 
         schema.name.toLowerCase().includes(filters.search.toLowerCase()) ||
         JSON.stringify(schema.definition).toLowerCase().includes(filters.search.toLowerCase()) : 
@@ -65,11 +76,72 @@ const Schemas = () => {
       
       return matchesSearch && matchesStatus && matchesMember;
     });
-  }, [filters]);
+    
+    // Handle latest only filter
+    if (filters.latestOnly) {
+      const latestVersions = new Map();
+      
+      // Group by name, then find latest version for each
+      filtered.forEach(schema => {
+        const current = latestVersions.get(schema.name);
+        
+        if (!current || compareVersions(schema.version, current.version) > 0) {
+          latestVersions.set(schema.name, schema);
+        }
+      });
+      
+      filtered = Array.from(latestVersions.values());
+    }
+    
+    // Apply sorting if configured
+    if (sortConfig !== null) {
+      filtered.sort((a, b) => {
+        if (a[sortConfig.key] < b[sortConfig.key]) {
+          return sortConfig.direction === 'asc' ? -1 : 1;
+        }
+        if (a[sortConfig.key] > b[sortConfig.key]) {
+          return sortConfig.direction === 'asc' ? 1 : -1;
+        }
+        return 0;
+      });
+    }
+    
+    return filtered;
+  }, [filters, sortConfig]);
+
+  // Compare versions helper function
+  const compareVersions = (v1: string, v2: string) => {
+    const parts1 = v1.split('.').map(Number);
+    const parts2 = v2.split('.').map(Number);
+    
+    for (let i = 0; i < 3; i++) {
+      if (parts1[i] > parts2[i]) return 1;
+      if (parts1[i] < parts2[i]) return -1;
+    }
+    
+    return 0;
+  };
+
+  // Get suggested next version
+  const getNextPatchVersion = (version: string) => {
+    const parts = version.split('.');
+    const patch = parseInt(parts[2] || '0') + 1;
+    return `${parts[0]}.${parts[1]}.${patch}`;
+  };
 
   // Options for filtering
   const statusOptions: Status[] = ["unstable", "draft", "stable", "deprecated"];
   const memberOptions = getUniqueValues(mockSchemas, "member");
+  const nameOptions = getUniqueValues(mockSchemas, "name");
+
+  // Handle sorting
+  const requestSort = (key: string) => {
+    let direction: 'asc' | 'desc' = 'asc';
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
 
   const handleViewSchema = (schema: Schema) => {
     setSelectedSchema(schema);
@@ -97,6 +169,39 @@ const Schemas = () => {
       description: "The schema has been created with unstable status.",
     });
     setIsCreateOpen(false);
+    setNewSchemaData({
+      name: "",
+      version: "1.0.0",
+      definition: "{}",
+      isNewName: false,
+      owner: ""
+    });
+  };
+
+  const handleNameChange = (value: string) => {
+    if (value === "new") {
+      setNewSchemaData(prev => ({ ...prev, isNewName: true, name: "" }));
+    } else {
+      setNewSchemaData(prev => ({ 
+        ...prev, 
+        isNewName: false, 
+        name: value,
+        // Find latest version and suggest next patch
+        version: getNextPatchVersion(
+          mockSchemas
+            .filter(s => s.name === value)
+            .sort((a, b) => compareVersions(b.version, a.version))[0]?.version || "1.0.0"
+        ),
+        // Load definition from latest version
+        definition: JSON.stringify(
+          mockSchemas
+            .filter(s => s.name === value)
+            .sort((a, b) => compareVersions(b.version, a.version))[0]?.definition || {},
+          null,
+          2
+        )
+      }));
+    }
   };
 
   const formatJson = (json: any): string => {
@@ -108,7 +213,19 @@ const Schemas = () => {
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold">Schemas</h1>
         
-        <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+        <Dialog open={isCreateOpen} onOpenChange={(open) => {
+          setIsCreateOpen(open);
+          if (!open) {
+            // Reset form state when dialog is closed
+            setNewSchemaData({
+              name: "",
+              version: "1.0.0",
+              definition: "{}",
+              isNewName: false,
+              owner: ""
+            });
+          }
+        }}>
           <DialogTrigger asChild>
             <Button>
               <Plus className="mr-2 h-4 w-4" /> Create New
@@ -122,16 +239,72 @@ const Schemas = () => {
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="name">Schema Name</Label>
+                  {newSchemaData.isNewName ? (
+                    <Input
+                      id="new-name"
+                      placeholder="Enter new schema name"
+                      value={newSchemaData.name}
+                      onChange={(e) => setNewSchemaData(prev => ({ ...prev, name: e.target.value }))}
+                      className="mt-1"
+                    />
+                  ) : (
+                    <Select onValueChange={handleNameChange}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select or create schema" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {nameOptions.map(name => (
+                          <SelectItem key={name} value={name}>{name}</SelectItem>
+                        ))}
+                        <SelectItem value="new">+ Create new schema</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+                  {newSchemaData.isNewName && (
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="mt-1"
+                      onClick={() => setNewSchemaData(prev => ({ ...prev, isNewName: false, name: "" }))}
+                    >
+                      Cancel
+                    </Button>
+                  )}
+                </div>
+                <div>
+                  <div className="grid grid-cols-1 gap-4">
+                    <div>
+                      <Label htmlFor="version">Version</Label>
+                      <Input 
+                        id="version" 
+                        value={newSchemaData.version}
+                        onChange={(e) => setNewSchemaData(prev => ({ ...prev, version: e.target.value }))}
+                        placeholder="1.0.0" 
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
               <div>
-                <Label htmlFor="name">Schema Name</Label>
-                <Input id="name" placeholder="e.g., customer-data" />
+                <Label htmlFor="owner">Owner</Label>
+                <Input 
+                  id="owner" 
+                  value={newSchemaData.owner}
+                  onChange={(e) => setNewSchemaData(prev => ({ ...prev, owner: e.target.value }))}
+                  placeholder="AI Member (e.g., Cool AI)" 
+                />
               </div>
               <div>
                 <Label htmlFor="schema-definition">JSON Schema Definition</Label>
                 <Textarea
                   id="schema-definition"
-                  className="h-60 json-viewer"
+                  className="h-60 json-viewer font-mono"
                   placeholder='{\n  "type": "object",\n  "properties": {\n    "name": { "type": "string" }\n  }\n}'
+                  value={newSchemaData.definition}
+                  onChange={(e) => setNewSchemaData(prev => ({ ...prev, definition: e.target.value }))}
                 />
               </div>
             </div>
@@ -148,6 +321,7 @@ const Schemas = () => {
         statusOptions={statusOptions}
         memberOptions={memberOptions}
         agentOptions={[]}
+        showLatestOption={true}
       />
       
       <Card>
@@ -158,10 +332,26 @@ const Schemas = () => {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Version</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Member</TableHead>
+                <TableHead onClick={() => requestSort('name')} className="cursor-pointer">
+                  Name {sortConfig?.key === 'name' && (
+                    <ArrowUpDown className="ml-2 h-4 w-4 inline" />
+                  )}
+                </TableHead>
+                <TableHead onClick={() => requestSort('version')} className="cursor-pointer">
+                  Version {sortConfig?.key === 'version' && (
+                    <ArrowUpDown className="ml-2 h-4 w-4 inline" />
+                  )}
+                </TableHead>
+                <TableHead onClick={() => requestSort('status')} className="cursor-pointer">
+                  Status {sortConfig?.key === 'status' && (
+                    <ArrowUpDown className="ml-2 h-4 w-4 inline" />
+                  )}
+                </TableHead>
+                <TableHead onClick={() => requestSort('member')} className="cursor-pointer">
+                  Member {sortConfig?.key === 'member' && (
+                    <ArrowUpDown className="ml-2 h-4 w-4 inline" />
+                  )}
+                </TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -232,19 +422,26 @@ const Schemas = () => {
               <h3 className="text-sm font-medium mb-2">Details</h3>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <p className="text-sm text-muted-foreground">Last Updated By</p>
+                  <p className="text-sm text-muted-foreground">AI Member</p>
                   <p>{selectedSchema?.member}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Version Bump</p>
-                  <p className="capitalize">{selectedSchema?.bump}</p>
+                  <p className="text-sm text-muted-foreground">Owner</p>
+                  <p>{selectedSchema?.owner || "Not specified"}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Version</p>
+                  <p>{selectedSchema?.version}</p>
                 </div>
               </div>
             </div>
           </div>
           <div className="flex justify-end gap-3 mt-4">
             <Button variant="outline" onClick={() => setIsViewOpen(false)}>Close</Button>
-            <Button onClick={() => handleEditSchema(selectedSchema as Schema)}>Edit</Button>
+            <Button onClick={() => {
+              setIsViewOpen(false);
+              handleEditSchema(selectedSchema as Schema);
+            }}>Edit</Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -254,36 +451,37 @@ const Schemas = () => {
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>
-              Edit Schema - v{selectedSchema?.version}
+              Edit Schema - {selectedSchema?.name}
             </DialogTitle>
             <DialogDescription>
-              Make changes to this schema. You'll create a new version when saving.
+              Make changes to this schema.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            <div>
-              <Label htmlFor="edit-name">Schema Name</Label>
-              <Input id="edit-name" defaultValue={selectedSchema?.name} />
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="edit-name">Schema Name</Label>
+                <Input id="edit-name" defaultValue={selectedSchema?.name} />
+              </div>
+              <div>
+                <Label htmlFor="edit-version">Version</Label>
+                <Input id="edit-version" defaultValue={selectedSchema?.version} />
+              </div>
             </div>
             <div>
-              <Label htmlFor="bump">Version Bump</Label>
-              <Select defaultValue="minor">
-                <SelectTrigger>
-                  <SelectValue placeholder="Select version bump" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="major">Major</SelectItem>
-                  <SelectItem value="minor">Minor</SelectItem>
-                  <SelectItem value="patch">Patch</SelectItem>
-                </SelectContent>
-              </Select>
+              <Label htmlFor="edit-owner">Owner</Label>
+              <Input 
+                id="edit-owner" 
+                defaultValue={selectedSchema?.owner || ""} 
+                placeholder="AI Member (e.g., Cool AI)" 
+              />
             </div>
             <div>
               <Label htmlFor="edit-schema-definition">Schema Definition</Label>
               <Textarea
                 id="edit-schema-definition"
-                className="h-60 json-viewer"
-                defaultValue={selectedSchema ? formatJson(selectedSchema.definition) : ''}
+                className="h-60 json-viewer font-mono"
+                defaultValue={selectedSchema ? formatJson(selectedSchema.definition) : '{}'}
               />
             </div>
           </div>

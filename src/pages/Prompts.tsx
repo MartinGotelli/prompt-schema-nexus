@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { Plus, Filter, ChevronDown } from 'lucide-react';
+import { Plus, Filter, ChevronDown, ArrowUpDown } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -43,17 +43,29 @@ const Prompts = () => {
     status: [],
     member: [],
     agent: [],
-    type: []
+    type: [],
+    latestOnly: false
   });
   
   const [selectedPrompt, setSelectedPrompt] = useState<Prompt | null>(null);
   const [isViewOpen, setIsViewOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [sortConfig, setSortConfig] = useState<{key: string, direction: 'asc' | 'desc'} | null>(null);
+  
+  // Create state for new prompt form
+  const [newPromptData, setNewPromptData] = useState({
+    type: "",
+    agent: "",
+    version: "1.0.0",
+    template: "",
+    isNewType: false,
+    owner: ""
+  });
 
   // Filter data based on current filters
   const filteredPrompts = useMemo(() => {
-    return mockPrompts.filter(prompt => {
+    let filtered = mockPrompts.filter(prompt => {
       const matchesSearch = filters.search ? 
         prompt.agent.toLowerCase().includes(filters.search.toLowerCase()) || 
         prompt.type.toLowerCase().includes(filters.search.toLowerCase()) ||
@@ -74,13 +86,74 @@ const Prompts = () => {
       
       return matchesSearch && matchesStatus && matchesMember && matchesAgent && matchesType;
     });
-  }, [filters]);
+    
+    // Handle latest only filter
+    if (filters.latestOnly) {
+      const latestVersions = new Map();
+      
+      // Group by type and agent, then find the latest version for each
+      filtered.forEach(prompt => {
+        const key = `${prompt.type}-${prompt.agent}`;
+        const current = latestVersions.get(key);
+        
+        if (!current || compareVersions(prompt.version, current.version) > 0) {
+          latestVersions.set(key, prompt);
+        }
+      });
+      
+      filtered = Array.from(latestVersions.values());
+    }
+    
+    // Apply sorting if configured
+    if (sortConfig !== null) {
+      filtered.sort((a, b) => {
+        if (a[sortConfig.key] < b[sortConfig.key]) {
+          return sortConfig.direction === 'asc' ? -1 : 1;
+        }
+        if (a[sortConfig.key] > b[sortConfig.key]) {
+          return sortConfig.direction === 'asc' ? 1 : -1;
+        }
+        return 0;
+      });
+    }
+    
+    return filtered;
+  }, [filters, sortConfig]);
+
+  // Compare versions helper function
+  const compareVersions = (v1: string, v2: string) => {
+    const parts1 = v1.split('.').map(Number);
+    const parts2 = v2.split('.').map(Number);
+    
+    for (let i = 0; i < 3; i++) {
+      if (parts1[i] > parts2[i]) return 1;
+      if (parts1[i] < parts2[i]) return -1;
+    }
+    
+    return 0;
+  };
+
+  // Get suggested next version
+  const getNextPatchVersion = (version: string) => {
+    const parts = version.split('.');
+    const patch = parseInt(parts[2] || '0') + 1;
+    return `${parts[0]}.${parts[1]}.${patch}`;
+  };
 
   // Options for filtering
   const statusOptions: Status[] = ["unstable", "draft", "stable", "deprecated"];
   const memberOptions = getUniqueValues(mockPrompts, "member");
   const agentOptions = getUniqueValues(mockPrompts, "agent");
   const typeOptions = getUniqueValues(mockPrompts, "type");
+
+  // Handle sorting
+  const requestSort = (key: string) => {
+    let direction: 'asc' | 'desc' = 'asc';
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
 
   const handleViewPrompt = (prompt: Prompt) => {
     setSelectedPrompt(prompt);
@@ -108,6 +181,53 @@ const Prompts = () => {
       description: "The prompt has been created with unstable status.",
     });
     setIsCreateOpen(false);
+    setNewPromptData({
+      type: "",
+      agent: "",
+      version: "1.0.0",
+      template: "",
+      isNewType: false,
+      owner: ""
+    });
+  };
+
+  const handleTypeChange = (value: string) => {
+    if (value === "new") {
+      setNewPromptData(prev => ({ ...prev, isNewType: true, type: "" }));
+    } else {
+      setNewPromptData(prev => ({ 
+        ...prev, 
+        isNewType: false, 
+        type: value,
+        // Find latest version and suggest next patch
+        version: getNextPatchVersion(
+          mockPrompts
+            .filter(p => p.type === value && p.agent === prev.agent)
+            .sort((a, b) => compareVersions(b.version, a.version))[0]?.version || "1.0.0"
+        ),
+        // Load template from latest version
+        template: mockPrompts
+          .filter(p => p.type === value && p.agent === prev.agent)
+          .sort((a, b) => compareVersions(b.version, a.version))[0]?.template || ""
+      }));
+    }
+  };
+
+  const handleAgentChange = (value: string) => {
+    setNewPromptData(prev => ({ 
+      ...prev, 
+      agent: value,
+      // Update version suggestion if type is already selected
+      version: prev.type ? getNextPatchVersion(
+        mockPrompts
+          .filter(p => p.type === prev.type && p.agent === value)
+          .sort((a, b) => compareVersions(b.version, a.version))[0]?.version || "1.0.0"
+      ) : prev.version,
+      // Load template from latest version if type is already selected
+      template: prev.type ? mockPrompts
+        .filter(p => p.type === prev.type && p.agent === value)
+        .sort((a, b) => compareVersions(b.version, a.version))[0]?.template || "" : prev.template
+    }));
   };
 
   return (
@@ -115,7 +235,20 @@ const Prompts = () => {
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold">Prompts</h1>
         
-        <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+        <Dialog open={isCreateOpen} onOpenChange={(open) => {
+          setIsCreateOpen(open);
+          if (!open) {
+            // Reset form state when dialog is closed
+            setNewPromptData({
+              type: "",
+              agent: "",
+              version: "1.0.0",
+              template: "",
+              isNewType: false,
+              owner: ""
+            });
+          }
+        }}>
           <DialogTrigger asChild>
             <Button>
               <Plus className="mr-2 h-4 w-4" /> Create New
@@ -132,20 +265,41 @@ const Prompts = () => {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="type">Type</Label>
-                  <Select defaultValue="qa">
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {typeOptions.map(type => (
-                        <SelectItem key={type} value={type}>{type}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  {newPromptData.isNewType ? (
+                    <Input
+                      id="new-type"
+                      placeholder="Enter new type"
+                      value={newPromptData.type}
+                      onChange={(e) => setNewPromptData(prev => ({ ...prev, type: e.target.value }))}
+                      className="mt-1"
+                    />
+                  ) : (
+                    <Select onValueChange={handleTypeChange}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select or create type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {typeOptions.map(type => (
+                          <SelectItem key={type} value={type}>{type}</SelectItem>
+                        ))}
+                        <SelectItem value="new">+ Create new type</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+                  {newPromptData.isNewType && (
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="mt-1"
+                      onClick={() => setNewPromptData(prev => ({ ...prev, isNewType: false, type: "" }))}
+                    >
+                      Cancel
+                    </Button>
+                  )}
                 </div>
                 <div>
                   <Label htmlFor="agent">Agent</Label>
-                  <Select defaultValue="customer-support">
+                  <Select onValueChange={handleAgentChange}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select agent" />
                     </SelectTrigger>
@@ -157,12 +311,34 @@ const Prompts = () => {
                   </Select>
                 </div>
               </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="version">Version</Label>
+                  <Input 
+                    id="version" 
+                    value={newPromptData.version}
+                    onChange={(e) => setNewPromptData(prev => ({ ...prev, version: e.target.value }))}
+                    placeholder="1.0.0" 
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="owner">Owner</Label>
+                  <Input 
+                    id="owner" 
+                    value={newPromptData.owner}
+                    onChange={(e) => setNewPromptData(prev => ({ ...prev, owner: e.target.value }))}
+                    placeholder="AI Member (e.g., Cool AI)" 
+                  />
+                </div>
+              </div>
               <div>
                 <Label htmlFor="prompt-template">Prompt Template</Label>
                 <Textarea
                   id="prompt-template"
                   className="h-40 code-editor"
                   placeholder="Enter your prompt template with variables like {{input}} or {{context}}..."
+                  value={newPromptData.template}
+                  onChange={(e) => setNewPromptData(prev => ({ ...prev, template: e.target.value }))}
                 />
               </div>
             </div>
@@ -180,6 +356,7 @@ const Prompts = () => {
         memberOptions={memberOptions}
         agentOptions={agentOptions}
         typeOptions={typeOptions}
+        showLatestOption={true}
       />
       
       <Card>
@@ -190,11 +367,31 @@ const Prompts = () => {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Type</TableHead>
-                <TableHead>Agent</TableHead>
-                <TableHead>Version</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Member</TableHead>
+                <TableHead onClick={() => requestSort('type')} className="cursor-pointer">
+                  Type {sortConfig?.key === 'type' && (
+                    <ArrowUpDown className="ml-2 h-4 w-4 inline" />
+                  )}
+                </TableHead>
+                <TableHead onClick={() => requestSort('agent')} className="cursor-pointer">
+                  Agent {sortConfig?.key === 'agent' && (
+                    <ArrowUpDown className="ml-2 h-4 w-4 inline" />
+                  )}
+                </TableHead>
+                <TableHead onClick={() => requestSort('version')} className="cursor-pointer">
+                  Version {sortConfig?.key === 'version' && (
+                    <ArrowUpDown className="ml-2 h-4 w-4 inline" />
+                  )}
+                </TableHead>
+                <TableHead onClick={() => requestSort('status')} className="cursor-pointer">
+                  Status {sortConfig?.key === 'status' && (
+                    <ArrowUpDown className="ml-2 h-4 w-4 inline" />
+                  )}
+                </TableHead>
+                <TableHead onClick={() => requestSort('member')} className="cursor-pointer">
+                  Member {sortConfig?.key === 'member' && (
+                    <ArrowUpDown className="ml-2 h-4 w-4 inline" />
+                  )}
+                </TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -266,19 +463,26 @@ const Prompts = () => {
               <h3 className="text-sm font-medium mb-2">Details</h3>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <p className="text-sm text-muted-foreground">Last Updated By</p>
+                  <p className="text-sm text-muted-foreground">AI Member</p>
                   <p>{selectedPrompt?.member}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Version Bump</p>
-                  <p className="capitalize">{selectedPrompt?.bump}</p>
+                  <p className="text-sm text-muted-foreground">Owner</p>
+                  <p>{selectedPrompt?.owner || "Not specified"}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Version</p>
+                  <p>{selectedPrompt?.version}</p>
                 </div>
               </div>
             </div>
           </div>
           <div className="flex justify-end gap-3 mt-4">
             <Button variant="outline" onClick={() => setIsViewOpen(false)}>Close</Button>
-            <Button onClick={() => handleEditPrompt(selectedPrompt as Prompt)}>Edit</Button>
+            <Button onClick={() => {
+              setIsViewOpen(false);
+              handleEditPrompt(selectedPrompt as Prompt);
+            }}>Edit</Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -288,10 +492,10 @@ const Prompts = () => {
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>
-              Edit Prompt - v{selectedPrompt?.version}
+              Edit Prompt - {selectedPrompt?.type}
             </DialogTitle>
             <DialogDescription>
-              Make changes to this prompt. You'll create a new version when saving.
+              Make changes to this prompt.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
@@ -323,18 +527,23 @@ const Prompts = () => {
                 </Select>
               </div>
             </div>
-            <div>
-              <Label htmlFor="bump">Version Bump</Label>
-              <Select defaultValue="minor">
-                <SelectTrigger>
-                  <SelectValue placeholder="Select version bump" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="major">Major</SelectItem>
-                  <SelectItem value="minor">Minor</SelectItem>
-                  <SelectItem value="patch">Patch</SelectItem>
-                </SelectContent>
-              </Select>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="edit-version">Version</Label>
+                <Input 
+                  id="edit-version" 
+                  defaultValue={selectedPrompt?.version} 
+                  placeholder="1.0.0" 
+                />
+              </div>
+              <div>
+                <Label htmlFor="edit-owner">Owner</Label>
+                <Input 
+                  id="edit-owner" 
+                  defaultValue={selectedPrompt?.owner || ""} 
+                  placeholder="AI Member (e.g., Cool AI)" 
+                />
+              </div>
             </div>
             <div>
               <Label htmlFor="edit-prompt-template">Prompt Template</Label>

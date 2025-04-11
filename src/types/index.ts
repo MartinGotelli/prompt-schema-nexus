@@ -8,6 +8,7 @@ export interface BaseVersioned {
   bump: VersionBump;
   status: Status;
   member: string;
+  owner?: string; // Add optional owner field
 }
 
 export interface Prompt extends BaseVersioned {
@@ -27,4 +28,5 @@ export interface FilterOptions {
   member?: string[];
   agent?: string[];
   type?: string[];
+  latestOnly?: boolean; // Add filter for latest versions only
 }
