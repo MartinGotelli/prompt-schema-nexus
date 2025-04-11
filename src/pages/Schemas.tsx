@@ -36,6 +36,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
+import { compareVersions, getNextPatchVersion, formatJson, statusOptions } from '@/lib/utils';
 
 const Schemas = () => {
   const [filters, setFilters] = useState<FilterOptions>({
@@ -49,6 +50,7 @@ const Schemas = () => {
   const [isViewOpen, setIsViewOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isNewVersionOpen, setIsNewVersionOpen] = useState(false);
   const [sortConfig, setSortConfig] = useState<{key: string, direction: 'asc' | 'desc'} | null>(null);
   
   // Create state for new schema form
@@ -57,7 +59,8 @@ const Schemas = () => {
     version: "1.0.0",
     definition: "{}",
     isNewName: false,
-    owner: ""
+    owner: "",
+    status: "unstable" as Status
   });
 
   // Filter data based on current filters
@@ -109,28 +112,7 @@ const Schemas = () => {
     return filtered;
   }, [filters, sortConfig]);
 
-  // Compare versions helper function
-  const compareVersions = (v1: string, v2: string) => {
-    const parts1 = v1.split('.').map(Number);
-    const parts2 = v2.split('.').map(Number);
-    
-    for (let i = 0; i < 3; i++) {
-      if (parts1[i] > parts2[i]) return 1;
-      if (parts1[i] < parts2[i]) return -1;
-    }
-    
-    return 0;
-  };
-
-  // Get suggested next version
-  const getNextPatchVersion = (version: string) => {
-    const parts = version.split('.');
-    const patch = parseInt(parts[2] || '0') + 1;
-    return `${parts[0]}.${parts[1]}.${patch}`;
-  };
-
   // Options for filtering
-  const statusOptions: Status[] = ["unstable", "draft", "stable", "deprecated"];
   const memberOptions = getUniqueValues(mockSchemas, "member");
   const nameOptions = getUniqueValues(mockSchemas, "name");
 
@@ -153,6 +135,22 @@ const Schemas = () => {
     setIsEditOpen(true);
   };
 
+  const handleCreateNewVersion = (schema: Schema) => {
+    setSelectedSchema(schema);
+    
+    // Pre-fill form with existing data but increment version
+    setNewSchemaData({
+      name: schema.name,
+      version: getNextPatchVersion(schema.version),
+      definition: formatJson(schema.definition),
+      isNewName: false,
+      owner: schema.owner || "",
+      status: "unstable"
+    });
+    
+    setIsNewVersionOpen(true);
+  };
+
   const handleSchemaAction = (action: string) => {
     if (!selectedSchema) return;
     
@@ -162,6 +160,7 @@ const Schemas = () => {
     
     setIsViewOpen(false);
     setIsEditOpen(false);
+    setIsNewVersionOpen(false);
   };
 
   const handleCreateSchema = () => {
@@ -174,7 +173,8 @@ const Schemas = () => {
       version: "1.0.0",
       definition: "{}",
       isNewName: false,
-      owner: ""
+      owner: "",
+      status: "unstable"
     });
   };
 
@@ -193,19 +193,13 @@ const Schemas = () => {
             .sort((a, b) => compareVersions(b.version, a.version))[0]?.version || "1.0.0"
         ),
         // Load definition from latest version
-        definition: JSON.stringify(
+        definition: formatJson(
           mockSchemas
             .filter(s => s.name === value)
             .sort((a, b) => compareVersions(b.version, a.version))[0]?.definition || {},
-          null,
-          2
         )
       }));
     }
-  };
-
-  const formatJson = (json: any): string => {
-    return JSON.stringify(json, null, 2);
   };
 
   return (
@@ -222,7 +216,8 @@ const Schemas = () => {
               version: "1.0.0",
               definition: "{}",
               isNewName: false,
-              owner: ""
+              owner: "",
+              status: "unstable"
             });
           }
         }}>
@@ -231,11 +226,11 @@ const Schemas = () => {
               <Plus className="mr-2 h-4 w-4" /> Create New
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-2xl">
+          <DialogContent className="sm:max-w-2xl" onInteractOutside={(e) => e.preventDefault()}>
             <DialogHeader>
               <DialogTitle>Create New Schema</DialogTitle>
               <DialogDescription>
-                Create a new JSON schema. New schemas are created with unstable status.
+                Create a new JSON schema.
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
@@ -288,14 +283,32 @@ const Schemas = () => {
                   </div>
                 </div>
               </div>
-              <div>
-                <Label htmlFor="owner">Owner</Label>
-                <Input 
-                  id="owner" 
-                  value={newSchemaData.owner}
-                  onChange={(e) => setNewSchemaData(prev => ({ ...prev, owner: e.target.value }))}
-                  placeholder="AI Member (e.g., Cool AI)" 
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="owner">Owner</Label>
+                  <Input 
+                    id="owner" 
+                    value={newSchemaData.owner}
+                    onChange={(e) => setNewSchemaData(prev => ({ ...prev, owner: e.target.value }))}
+                    placeholder="AI Member (e.g., Cool AI)" 
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="status">Status</Label>
+                  <Select 
+                    value={newSchemaData.status}
+                    onValueChange={(value) => setNewSchemaData(prev => ({ ...prev, status: value as Status }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {statusOptions.map(status => (
+                        <SelectItem key={status} value={status}>{status}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               <div>
                 <Label htmlFor="schema-definition">JSON Schema Definition</Label>
@@ -375,7 +388,7 @@ const Schemas = () => {
                         <DropdownMenuGroup>
                           <DropdownMenuItem onClick={() => handleViewSchema(schema)}>View</DropdownMenuItem>
                           <DropdownMenuItem onClick={() => handleEditSchema(schema)}>Edit</DropdownMenuItem>
-                          <DropdownMenuItem>Create New Version</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleCreateNewVersion(schema)}>Create New Version</DropdownMenuItem>
                         </DropdownMenuGroup>
                         <DropdownMenuSeparator />
                         <DropdownMenuGroup>
@@ -402,7 +415,7 @@ const Schemas = () => {
       
       {/* View Schema Dialog */}
       <Dialog open={isViewOpen} onOpenChange={setIsViewOpen}>
-        <DialogContent className="sm:max-w-2xl">
+        <DialogContent className="sm:max-w-2xl" onInteractOutside={(e) => e.preventDefault()}>
           <DialogHeader>
             <DialogTitle>
               {selectedSchema?.name} - v{selectedSchema?.version}
@@ -448,7 +461,7 @@ const Schemas = () => {
 
       {/* Edit Schema Dialog */}
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
-        <DialogContent className="sm:max-w-2xl">
+        <DialogContent className="sm:max-w-2xl" onInteractOutside={(e) => e.preventDefault()}>
           <DialogHeader>
             <DialogTitle>
               Edit Schema - {selectedSchema?.name}
@@ -468,13 +481,28 @@ const Schemas = () => {
                 <Input id="edit-version" defaultValue={selectedSchema?.version} />
               </div>
             </div>
-            <div>
-              <Label htmlFor="edit-owner">Owner</Label>
-              <Input 
-                id="edit-owner" 
-                defaultValue={selectedSchema?.owner || ""} 
-                placeholder="AI Member (e.g., Cool AI)" 
-              />
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="edit-owner">Owner</Label>
+                <Input 
+                  id="edit-owner" 
+                  defaultValue={selectedSchema?.owner || ""} 
+                  placeholder="AI Member (e.g., Cool AI)" 
+                />
+              </div>
+              <div>
+                <Label htmlFor="edit-status">Status</Label>
+                <Select defaultValue={selectedSchema?.status}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {statusOptions.map(status => (
+                      <SelectItem key={status} value={status}>{status}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             <div>
               <Label htmlFor="edit-schema-definition">Schema Definition</Label>
@@ -488,6 +516,70 @@ const Schemas = () => {
           <div className="flex justify-end gap-3">
             <Button variant="outline" onClick={() => setIsEditOpen(false)}>Cancel</Button>
             <Button onClick={() => handleSchemaAction("updated")}>Save Changes</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create New Version Dialog */}
+      <Dialog open={isNewVersionOpen} onOpenChange={setIsNewVersionOpen}>
+        <DialogContent className="sm:max-w-2xl" onInteractOutside={(e) => e.preventDefault()}>
+          <DialogHeader>
+            <DialogTitle>
+              Create New Version - {selectedSchema?.name}
+            </DialogTitle>
+            <DialogDescription>
+              Create a new version based on the selected schema.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="new-version">Version</Label>
+                <Input 
+                  id="new-version" 
+                  value={newSchemaData.version}
+                  onChange={(e) => setNewSchemaData(prev => ({ ...prev, version: e.target.value }))}
+                />
+              </div>
+              <div>
+                <Label htmlFor="new-status">Status</Label>
+                <Select 
+                  value={newSchemaData.status}
+                  onValueChange={(value) => setNewSchemaData(prev => ({ ...prev, status: value as Status }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {statusOptions.map(status => (
+                      <SelectItem key={status} value={status}>{status}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="new-owner">Owner</Label>
+              <Input 
+                id="new-owner" 
+                value={newSchemaData.owner}
+                onChange={(e) => setNewSchemaData(prev => ({ ...prev, owner: e.target.value }))}
+                placeholder="AI Member (e.g., Cool AI)" 
+              />
+            </div>
+            <div>
+              <Label htmlFor="new-schema-definition">Schema Definition</Label>
+              <Textarea
+                id="new-schema-definition"
+                className="h-60 json-viewer font-mono"
+                value={newSchemaData.definition}
+                onChange={(e) => setNewSchemaData(prev => ({ ...prev, definition: e.target.value }))}
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-3">
+            <Button variant="outline" onClick={() => setIsNewVersionOpen(false)}>Cancel</Button>
+            <Button onClick={() => handleSchemaAction("created")}>Create New Version</Button>
           </div>
         </DialogContent>
       </Dialog>

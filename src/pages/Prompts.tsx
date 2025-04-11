@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { Plus, Filter, ChevronDown, ArrowUpDown } from 'lucide-react';
+import { Plus, ChevronDown, ArrowUpDown } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -36,6 +36,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
+import { compareVersions, getNextPatchVersion, statusOptions } from '@/lib/utils';
 
 const Prompts = () => {
   const [filters, setFilters] = useState<FilterOptions>({
@@ -51,6 +52,7 @@ const Prompts = () => {
   const [isViewOpen, setIsViewOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isNewVersionOpen, setIsNewVersionOpen] = useState(false);
   const [sortConfig, setSortConfig] = useState<{key: string, direction: 'asc' | 'desc'} | null>(null);
   
   // Create state for new prompt form
@@ -60,7 +62,8 @@ const Prompts = () => {
     version: "1.0.0",
     template: "",
     isNewType: false,
-    owner: ""
+    owner: "",
+    status: "unstable" as Status
   });
 
   // Filter data based on current filters
@@ -120,28 +123,7 @@ const Prompts = () => {
     return filtered;
   }, [filters, sortConfig]);
 
-  // Compare versions helper function
-  const compareVersions = (v1: string, v2: string) => {
-    const parts1 = v1.split('.').map(Number);
-    const parts2 = v2.split('.').map(Number);
-    
-    for (let i = 0; i < 3; i++) {
-      if (parts1[i] > parts2[i]) return 1;
-      if (parts1[i] < parts2[i]) return -1;
-    }
-    
-    return 0;
-  };
-
-  // Get suggested next version
-  const getNextPatchVersion = (version: string) => {
-    const parts = version.split('.');
-    const patch = parseInt(parts[2] || '0') + 1;
-    return `${parts[0]}.${parts[1]}.${patch}`;
-  };
-
   // Options for filtering
-  const statusOptions: Status[] = ["unstable", "draft", "stable", "deprecated"];
   const memberOptions = getUniqueValues(mockPrompts, "member");
   const agentOptions = getUniqueValues(mockPrompts, "agent");
   const typeOptions = getUniqueValues(mockPrompts, "type");
@@ -165,6 +147,23 @@ const Prompts = () => {
     setIsEditOpen(true);
   };
 
+  const handleCreateNewVersion = (prompt: Prompt) => {
+    setSelectedPrompt(prompt);
+    
+    // Pre-fill form with existing data but increment version
+    setNewPromptData({
+      type: prompt.type,
+      agent: prompt.agent,
+      version: getNextPatchVersion(prompt.version),
+      template: prompt.template,
+      isNewType: false,
+      owner: prompt.owner || "",
+      status: "unstable"
+    });
+    
+    setIsNewVersionOpen(true);
+  };
+
   const handlePromptAction = (action: string) => {
     if (!selectedPrompt) return;
     
@@ -174,6 +173,7 @@ const Prompts = () => {
     
     setIsViewOpen(false);
     setIsEditOpen(false);
+    setIsNewVersionOpen(false);
   };
 
   const handleCreatePrompt = () => {
@@ -187,7 +187,8 @@ const Prompts = () => {
       version: "1.0.0",
       template: "",
       isNewType: false,
-      owner: ""
+      owner: "",
+      status: "unstable"
     });
   };
 
@@ -199,15 +200,15 @@ const Prompts = () => {
         ...prev, 
         isNewType: false, 
         type: value,
-        // Find latest version and suggest next patch
+        // Find latest version and suggest next patch - based only on type, not agent
         version: getNextPatchVersion(
           mockPrompts
-            .filter(p => p.type === value && p.agent === prev.agent)
+            .filter(p => p.type === value)
             .sort((a, b) => compareVersions(b.version, a.version))[0]?.version || "1.0.0"
         ),
-        // Load template from latest version
+        // Load template from latest version matching the type, regardless of agent
         template: mockPrompts
-          .filter(p => p.type === value && p.agent === prev.agent)
+          .filter(p => p.type === value)
           .sort((a, b) => compareVersions(b.version, a.version))[0]?.template || ""
       }));
     }
@@ -217,16 +218,6 @@ const Prompts = () => {
     setNewPromptData(prev => ({ 
       ...prev, 
       agent: value,
-      // Update version suggestion if type is already selected
-      version: prev.type ? getNextPatchVersion(
-        mockPrompts
-          .filter(p => p.type === prev.type && p.agent === value)
-          .sort((a, b) => compareVersions(b.version, a.version))[0]?.version || "1.0.0"
-      ) : prev.version,
-      // Load template from latest version if type is already selected
-      template: prev.type ? mockPrompts
-        .filter(p => p.type === prev.type && p.agent === value)
-        .sort((a, b) => compareVersions(b.version, a.version))[0]?.template || "" : prev.template
     }));
   };
 
@@ -245,7 +236,8 @@ const Prompts = () => {
               version: "1.0.0",
               template: "",
               isNewType: false,
-              owner: ""
+              owner: "",
+              status: "unstable"
             });
           }
         }}>
@@ -254,11 +246,11 @@ const Prompts = () => {
               <Plus className="mr-2 h-4 w-4" /> Create New
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-2xl">
+          <DialogContent className="sm:max-w-2xl" onInteractOutside={(e) => e.preventDefault()}>
             <DialogHeader>
               <DialogTitle>Create New Prompt</DialogTitle>
               <DialogDescription>
-                Create a new prompt for an AI agent. New prompts are created with unstable status.
+                Create a new prompt for an AI agent.
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
@@ -311,7 +303,7 @@ const Prompts = () => {
                   </Select>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-4">
                 <div>
                   <Label htmlFor="version">Version</Label>
                   <Input 
@@ -329,6 +321,22 @@ const Prompts = () => {
                     onChange={(e) => setNewPromptData(prev => ({ ...prev, owner: e.target.value }))}
                     placeholder="AI Member (e.g., Cool AI)" 
                   />
+                </div>
+                <div>
+                  <Label htmlFor="status">Status</Label>
+                  <Select 
+                    value={newPromptData.status}
+                    onValueChange={(value) => setNewPromptData(prev => ({ ...prev, status: value as Status }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {statusOptions.map(status => (
+                        <SelectItem key={status} value={status}>{status}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
               <div>
@@ -416,7 +424,7 @@ const Prompts = () => {
                         <DropdownMenuGroup>
                           <DropdownMenuItem onClick={() => handleViewPrompt(prompt)}>View</DropdownMenuItem>
                           <DropdownMenuItem onClick={() => handleEditPrompt(prompt)}>Edit</DropdownMenuItem>
-                          <DropdownMenuItem>Create New Version</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleCreateNewVersion(prompt)}>Create New Version</DropdownMenuItem>
                         </DropdownMenuGroup>
                         <DropdownMenuSeparator />
                         <DropdownMenuGroup>
@@ -443,7 +451,7 @@ const Prompts = () => {
       
       {/* View Prompt Dialog */}
       <Dialog open={isViewOpen} onOpenChange={setIsViewOpen}>
-        <DialogContent className="sm:max-w-2xl">
+        <DialogContent className="sm:max-w-2xl" onInteractOutside={(e) => e.preventDefault()}>
           <DialogHeader>
             <DialogTitle>
               {selectedPrompt?.type} Prompt - v{selectedPrompt?.version}
@@ -489,7 +497,7 @@ const Prompts = () => {
 
       {/* Edit Prompt Dialog */}
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
-        <DialogContent className="sm:max-w-2xl">
+        <DialogContent className="sm:max-w-2xl" onInteractOutside={(e) => e.preventDefault()}>
           <DialogHeader>
             <DialogTitle>
               Edit Prompt - {selectedPrompt?.type}
@@ -527,7 +535,7 @@ const Prompts = () => {
                 </Select>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-4">
               <div>
                 <Label htmlFor="edit-version">Version</Label>
                 <Input 
@@ -544,6 +552,19 @@ const Prompts = () => {
                   placeholder="AI Member (e.g., Cool AI)" 
                 />
               </div>
+              <div>
+                <Label htmlFor="edit-status">Status</Label>
+                <Select defaultValue={selectedPrompt?.status}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {statusOptions.map(status => (
+                      <SelectItem key={status} value={status}>{status}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             <div>
               <Label htmlFor="edit-prompt-template">Prompt Template</Label>
@@ -557,6 +578,96 @@ const Prompts = () => {
           <div className="flex justify-end gap-3">
             <Button variant="outline" onClick={() => setIsEditOpen(false)}>Cancel</Button>
             <Button onClick={() => handlePromptAction("updated")}>Save Changes</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create New Version Dialog */}
+      <Dialog open={isNewVersionOpen} onOpenChange={setIsNewVersionOpen}>
+        <DialogContent className="sm:max-w-2xl" onInteractOutside={(e) => e.preventDefault()}>
+          <DialogHeader>
+            <DialogTitle>
+              Create New Version - {selectedPrompt?.type}
+            </DialogTitle>
+            <DialogDescription>
+              Create a new version based on the selected prompt.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="new-type">Type</Label>
+                <Input 
+                  id="new-type" 
+                  value={newPromptData.type}
+                  readOnly
+                />
+              </div>
+              <div>
+                <Label htmlFor="new-agent">Agent</Label>
+                <Select 
+                  value={newPromptData.agent}
+                  onValueChange={(value) => setNewPromptData(prev => ({ ...prev, agent: value }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select agent" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {agentOptions.map(agent => (
+                      <SelectItem key={agent} value={agent}>{agent}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <Label htmlFor="new-version">Version</Label>
+                <Input 
+                  id="new-version" 
+                  value={newPromptData.version}
+                  onChange={(e) => setNewPromptData(prev => ({ ...prev, version: e.target.value }))}
+                />
+              </div>
+              <div>
+                <Label htmlFor="new-owner">Owner</Label>
+                <Input 
+                  id="new-owner" 
+                  value={newPromptData.owner}
+                  onChange={(e) => setNewPromptData(prev => ({ ...prev, owner: e.target.value }))}
+                  placeholder="AI Member (e.g., Cool AI)" 
+                />
+              </div>
+              <div>
+                <Label htmlFor="new-status">Status</Label>
+                <Select 
+                  value={newPromptData.status}
+                  onValueChange={(value) => setNewPromptData(prev => ({ ...prev, status: value as Status }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {statusOptions.map(status => (
+                      <SelectItem key={status} value={status}>{status}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="new-prompt-template">Prompt Template</Label>
+              <Textarea
+                id="new-prompt-template"
+                className="h-40 code-editor"
+                value={newPromptData.template}
+                onChange={(e) => setNewPromptData(prev => ({ ...prev, template: e.target.value }))}
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-3">
+            <Button variant="outline" onClick={() => setIsNewVersionOpen(false)}>Cancel</Button>
+            <Button onClick={() => handlePromptAction("created")}>Create New Version</Button>
           </div>
         </DialogContent>
       </Dialog>
