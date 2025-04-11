@@ -7,7 +7,7 @@ import FilterBar from "@/components/ui/FilterBar";
 import { FilterOptions, Schema, Status } from "@/types";
 import { mockSchemas, getUniqueValues } from "@/lib/data";
 import { statusOptions } from '@/lib/utils';
-import { DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogTrigger } from "@/components/ui/dialog";
 import SchemaTable from "@/components/schemas/SchemaTable";
 import CreateSchemaDialog from "@/components/schemas/CreateSchemaDialog";
 import ViewSchemaDialog from "@/components/schemas/ViewSchemaDialog";
@@ -70,11 +70,13 @@ const Schemas = () => {
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold">Schemas</h1>
         
-        <DialogTrigger asChild>
-          <Button onClick={() => setIsCreateOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" /> Create New
-          </Button>
-        </DialogTrigger>
+        <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+          <DialogTrigger asChild>
+            <Button>
+              <Plus className="mr-2 h-4 w-4" /> Create New
+            </Button>
+          </DialogTrigger>
+        </Dialog>
       </div>
       
       <FilterBar

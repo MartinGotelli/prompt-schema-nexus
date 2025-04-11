@@ -8,7 +8,7 @@ import { FilterOptions, Prompt, Status } from "@/types";
 import { mockPrompts, getUniqueValues } from "@/lib/data";
 import { toast } from 'sonner';
 import { statusOptions } from '@/lib/utils';
-import { DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogTrigger } from "@/components/ui/dialog";
 import PromptTable from "@/components/prompts/PromptTable";
 import CreatePromptDialog from "@/components/prompts/CreatePromptDialog";
 import ViewPromptDialog from "@/components/prompts/ViewPromptDialog";
@@ -75,11 +75,13 @@ const Prompts = () => {
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold">Prompts</h1>
         
-        <DialogTrigger asChild>
-          <Button onClick={() => setIsCreateOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" /> Create New
-          </Button>
-        </DialogTrigger>
+        <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+          <DialogTrigger asChild>
+            <Button>
+              <Plus className="mr-2 h-4 w-4" /> Create New
+            </Button>
+          </DialogTrigger>
+        </Dialog>
       </div>
       
       <FilterBar
