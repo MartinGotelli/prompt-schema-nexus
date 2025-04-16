@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { cn } from "@/lib/utils";
@@ -6,7 +5,6 @@ import {
   LayoutDashboard,
   BookText,
   FileJson,
-  Settings,
   Menu,
   Code,
 } from 'lucide-react';
@@ -35,11 +33,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, setCollapsed }) => 
       name: 'Schemas',
       href: '/schemas',
       icon: FileJson,
-    },
-    {
-      name: 'Settings',
-      href: '/settings',
-      icon: Settings,
     },
   ];
 
