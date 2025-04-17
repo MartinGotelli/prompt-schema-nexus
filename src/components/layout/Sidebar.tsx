@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { cn } from "@/lib/utils";
@@ -7,6 +8,7 @@ import {
   FileJson,
   Menu,
   Code,
+  TestTube,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -23,6 +25,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, setCollapsed }) => 
       name: 'Dashboard',
       href: '/',
       icon: LayoutDashboard,
+    },
+    {
+      name: 'Test',
+      href: '/test',
+      icon: TestTube,
     },
     {
       name: 'Prompts',
