@@ -13,6 +13,7 @@ import { toast } from "sonner";
 interface Message {
   role: 'user' | 'assistant';
   content: string;
+  extractedData?: Record<string, any>;
   timestamp: Date;
 }
 
@@ -69,17 +70,54 @@ const Test = () => {
 
     setMessages(prev => [...prev, userMessage]);
 
-    // Simulate AI response
+    // Simulate AI response based on action type
     setTimeout(() => {
       const aiMessage: Message = {
         role: 'assistant',
-        content: `${selectedMember} AI response: I received your message: "${newMessage}"`,
+        content: selectedAction !== 'extract' ? `${selectedMember} AI response: "${newMessage}"` : '',
+        extractedData: selectedAction !== 'converse' ? {
+          schema: selectedSchema,
+          type: selectedExtractType,
+          data: {
+            sample: "Extracted data would appear here",
+            userInput: newMessage
+          }
+        } : undefined,
         timestamp: new Date(),
       };
       setMessages(prev => [...prev, aiMessage]);
     }, 1000);
 
     setNewMessage('');
+  };
+
+  const renderMessage = (message: Message) => {
+    if (message.role === 'user') {
+      return (
+        <div key={message.timestamp.getTime()} className="ml-auto">
+          <div className="bg-primary text-primary-foreground rounded-lg px-3 py-2 text-sm max-w-[80%]">
+            {message.content}
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div key={message.timestamp.getTime()} className="space-y-2">
+        {message.content && (
+          <div className="bg-muted rounded-lg px-3 py-2 text-sm max-w-[80%]">
+            {message.content}
+          </div>
+        )}
+        {message.extractedData && (
+          <div className="bg-muted rounded-lg px-3 py-2 text-sm max-w-[80%] font-mono">
+            <pre className="whitespace-pre-wrap break-words">
+              {JSON.stringify(message.extractedData, null, 2)}
+            </pre>
+          </div>
+        )}
+      </div>
+    );
   };
 
   if (step === 'setup') {
@@ -200,19 +238,7 @@ const Test = () => {
 
       <ScrollArea className="flex-1 p-4">
         <div className="space-y-4">
-          {messages.map((message, index) => (
-            <div
-              key={index}
-              className={cn(
-                "flex w-max max-w-[80%] flex-col gap-2 rounded-lg px-3 py-2 text-sm",
-                message.role === 'user'
-                  ? "ml-auto bg-primary text-primary-foreground"
-                  : "bg-muted"
-              )}
-            >
-              {message.content}
-            </div>
-          ))}
+          {messages.map(message => renderMessage(message))}
         </div>
       </ScrollArea>
 
